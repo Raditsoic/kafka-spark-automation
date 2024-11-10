@@ -8,7 +8,7 @@ from pyspark.sql.functions import col, when, trim, lower
 from datetime import datetime
 import os
 
-base_model_path = "../model"
+base_model_path = "../app/model"
 
 def main(file_path):
     spark = SparkSession.builder \
