@@ -4,7 +4,8 @@ from pyspark.sql import SparkSession
 from pyspark.ml.feature import HashingTF, IDF, Tokenizer, StandardScaler, StopWordsRemover
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.sql.functions import col, when, trim, lower
+from pyspark.sql.functions import col, when, trim, lower, create_map, lit
+from itertools import chain
 from datetime import datetime
 import os
 
@@ -33,6 +34,18 @@ def main(file_path):
     df = df.withColumn("comment_text", 
         when(col("comment_text").isNull(), "") 
         .otherwise(trim(lower(col("comment_text")))))  
+    
+    total_count = df.count()
+    class_weights = df.groupBy("toxicity_level") \
+        .count() \
+        .withColumn("weight", (total_count / col("count"))) \
+        .collect()
+
+    weights_dict = {row["toxicity_level"]: row["weight"] for row in class_weights}
+
+    df = df.withColumn("weight", 
+        when(col("toxicity_level").isNull(), 1.0)
+        .otherwise(create_map([lit(x) for x in chain(*weights_dict.items())])[col("toxicity_level")]))
 
     train_data, test_data = df.randomSplit([0.8, 0.2], seed=42)
 
