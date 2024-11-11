@@ -4,8 +4,7 @@ from pyspark.sql import SparkSession
 from pyspark.ml.feature import HashingTF, IDF, Tokenizer, StandardScaler, StopWordsRemover
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.sql.functions import col, when, trim, lower, create_map, lit
-from itertools import chain
+from pyspark.sql.functions import col, when, trim, lower
 from datetime import datetime
 import os
 
@@ -14,8 +13,8 @@ base_model_path = "../app/model"
 def main(file_path):
     spark = SparkSession.builder \
         .appName("Toxic Comment Classifier") \
-        .config("spark.driver.memory", "4g") \
-        .config("spark.executor.memory", "4g") \
+        .config("spark.driver.memory", "8g") \
+        .config("spark.executor.memory", "8g") \
         .getOrCreate()
     
     df = spark.read.option("quote", "\"") \
@@ -24,28 +23,16 @@ def main(file_path):
         .csv(file_path, header=True, inferSchema=True)
 
     df = df.withColumn("toxicity_level", 
-        (col("toxic").cast("double") + 
-        col("severe_toxic").cast("double") + 
-        col("obscene").cast("double") + 
-        col("threat").cast("double") + 
-        col("insult").cast("double") + 
-        col("identity_hate").cast("double")))
+        (col("toxic").cast("double") +  # Increase weight for primary toxic flag
+        col("severe_toxic").cast("double") +  # Increase weight for severe toxic
+        col("obscene").cast("double") +
+        col("threat").cast("double") +
+        col("insult").cast("double") +
+        col("identity_hate").cast("double")))  # Increase weight for serious categories
 
     df = df.withColumn("comment_text", 
         when(col("comment_text").isNull(), "") 
         .otherwise(trim(lower(col("comment_text")))))  
-    
-    total_count = df.count()
-    class_weights = df.groupBy("toxicity_level") \
-        .count() \
-        .withColumn("weight", (total_count / col("count"))) \
-        .collect()
-
-    weights_dict = {row["toxicity_level"]: row["weight"] for row in class_weights}
-
-    df = df.withColumn("weight", 
-        when(col("toxicity_level").isNull(), 1.0)
-        .otherwise(create_map([lit(x) for x in chain(*weights_dict.items())])[col("toxicity_level")]))
 
     train_data, test_data = df.randomSplit([0.8, 0.2], seed=42)
 
@@ -54,7 +41,7 @@ def main(file_path):
 
     stopwords_remover = StopWordsRemover(inputCol="words", outputCol="filtered_words")
 
-    hashingTF = HashingTF(inputCol="filtered_words", outputCol="raw_features", numFeatures=10000)
+    hashingTF = HashingTF(inputCol="filtered_words", outputCol="raw_features", numFeatures=15000)
 
     idf = IDF(inputCol="raw_features", outputCol="features")
 
@@ -65,7 +52,8 @@ def main(file_path):
 
     lr = LogisticRegression(labelCol="toxicity_level", 
                     featuresCol="features", 
-                    maxIter=10)
+                    maxIter=10,
+                    family="multinomial")
     
     pipelines = {
     "Logistic_Regression": Pipeline(stages=[tokenizer, stopwords_remover, hashingTF, idf, lr]),
@@ -111,17 +99,15 @@ def main(file_path):
         # Save example of how to load the model in a README file
         readme_path = os.path.join(model_path, "README.txt")
         with open(readme_path, "w") as f:
-            f.write(f"""Model: {name}
+            f.write(f"""
+Model: {name}
 Saved on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 Accuracy: {accuracy:.4f}
 F1 Score: {f1:.4f}"""
                     )
-
-    # Stop Spark session
     spark.stop()
 
     return
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Test')

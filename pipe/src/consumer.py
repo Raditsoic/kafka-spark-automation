@@ -54,10 +54,4 @@ try:
 except KeyboardInterrupt:
     pass
 finally:
-    csv_file_path = './dataset/batch/toxic_comment_final.csv'
-    if batch_data:
-        df = pd.DataFrame(batch_data)
-        df.to_csv(csv_file_path, mode='a', index=False, header=not header_written)
-        print(f"Final batch of {len(batch_data)} messages saved to {csv_file_path}")
-    
     consumer.close()
