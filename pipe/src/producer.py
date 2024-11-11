@@ -2,6 +2,7 @@ from confluent_kafka import Producer
 import json
 import pandas as pd
 import time
+import random
 
 # Producer
 conf = {
@@ -44,7 +45,7 @@ for index, row in data.iterrows():
     print(f"Message {index} sent to Kafka")
 
     # Uncomment if need delay and adjustment
-    # time.sleep(0.01)
+    # time.sleep(random.uniform(0.01, 1))
 
 
 producer.flush()
